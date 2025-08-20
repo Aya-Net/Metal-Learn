@@ -8,3 +8,6 @@ add_subdirectory(3rd_party)
 # demos
 add_subdirectory(src/ch1)
 add_subdirectory(src/ch2)
+add_subdirectory(src/ch3)
+add_subdirectory(src/ch4)
+add_subdirectory(src/ch5)
