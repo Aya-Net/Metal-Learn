@@ -60,34 +60,23 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    MTL::ClearColor clearColor{0.2f, 0.3f, 0.3f, 1.0f};
+    MTL::ClearColor clearColor{0.0f, 0.0f, 0.0f, 0.0f};
 
-    Shader shader("shaders/shader.metal", "vertex_main", "fragment_main");
-    shader.Compile(device);
+    Shader objectShader("shaders/shader.metal", "vertex_main", "object_fragment");
+    Shader lightShader("shaders/shader.metal", "vertex_main", "light_fragment");
+    objectShader.Compile(device);
+    lightShader.Compile(device);
     MTL::VertexDescriptor* vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
 
     vertexDescriptor->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
     vertexDescriptor->attributes()->object(0)->setOffset(0);
     vertexDescriptor->attributes()->object(0)->setBufferIndex(0);
-    vertexDescriptor->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
-    vertexDescriptor->attributes()->object(1)->setOffset(3 * sizeof(float));
-    vertexDescriptor->attributes()->object(1)->setBufferIndex(0);
 
     vertexDescriptor->layouts()->object(0)->setStride(5 * sizeof(float));
     vertexDescriptor->layouts()->object(0)->setStepFunction(MTL::VertexStepFunctionPerVertex);
 
-    MTL::RenderPipelineState* trianglePipeline = shader.createPipeline(device, vertexDescriptor);
-
-    uint16_t indices[][3] = {
-            {0, 1, 3},
-            {1, 2, 3}
-    };
-
-    MTL::Buffer* indexBuffer = device->newBuffer(
-            indices,
-            sizeof(indices),
-            MTL::ResourceStorageModeShared
-    );
+    MTL::RenderPipelineState* objectPipeline = objectShader.createPipeline(device, vertexDescriptor);
+    MTL::RenderPipelineState* lightPipeline = lightShader.createPipeline(device, vertexDescriptor);
 
     float vertices[] = {
             -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
@@ -132,56 +121,10 @@ int main()
             -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
             -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
     };
-    glm::vec3 cubePositions[] = {
-            glm::vec3( 0.0f,  0.0f,  0.0f),
-            glm::vec3( 2.0f,  5.0f, -15.0f),
-            glm::vec3(-1.5f, -2.2f, -2.5f),
-            glm::vec3(-3.8f, -2.0f, -12.3f),
-            glm::vec3( 2.4f, -0.4f, -3.5f),
-            glm::vec3(-1.7f,  3.0f, -7.5f),
-            glm::vec3( 1.3f, -2.0f, -2.5f),
-            glm::vec3( 1.5f,  2.0f, -2.5f),
-            glm::vec3( 1.5f,  0.2f, -1.5f),
-            glm::vec3(-1.3f,  1.0f, -1.5f)
-    };
+
+    glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
     MTL::Buffer* buffer = device->newBuffer(vertices, sizeof(vertices), MTL::ResourceStorageModeShared);
-
-    // Create texture
-    int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load("../../assets/container.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-    MTL::TextureDescriptor* texDesc = MTL::TextureDescriptor::texture2DDescriptor(
-            MTL::PixelFormatRGBA8Unorm,
-            texWidth,
-            texHeight,
-            false
-    );
-    texDesc->setUsage(MTL::TextureUsageShaderRead);
-    MTL::Texture* texture = device->newTexture(texDesc);
-    texDesc->release();
-    MTL::Region region(0, 0, 0, texWidth, texHeight, 1);
-    texture->replaceRegion(region, 0, pixels, texWidth * 4);
-
-    stbi_image_free(pixels);
-
-    pixels = stbi_load("../../assets/awesomeface.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-
-    MTL::TextureDescriptor* texDesc2 = MTL::TextureDescriptor::texture2DDescriptor(
-            MTL::PixelFormatRGBA8Unorm,
-            texWidth,
-            texHeight,
-            false
-    );
-    texDesc2->setUsage(MTL::TextureUsageShaderRead);
-    MTL::Texture* texture2 = device->newTexture(texDesc2);
-    texDesc2->release();
-
-    MTL::Region region2 = MTL::Region(0, 0, 0, texWidth, texHeight, 1);
-    texture2->replaceRegion(region2, 0, pixels, texWidth * 4);
-
-    stbi_image_free(pixels);
-
-    MTL::Buffer* uniform_buffer = device->newBuffer(sizeof(glm::mat4) * 3, MTL::ResourceStorageModeShared);
 
     MTL::TextureDescriptor* depthDesc = MTL::TextureDescriptor::texture2DDescriptor(
             MTL::PixelFormatDepth32Float,
@@ -226,29 +169,33 @@ int main()
             MTL::DepthStencilState* depthState = device->newDepthStencilState(depthStateDesc);
             renderPassDescriptor->setDepthAttachment(depthAttachment);
 
+            glm::mat4 matrices[] = {
+                    glm::mat4(1.0f),
+                    camera.GetViewMatrix(),
+                    glm::perspective(glm::radians(camera.Zoom), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f)
+            };
 
-            glm::mat4 viewMatrix = camera.GetViewMatrix();
-            glm::mat4 projectionMatrix = glm::perspective(glm::radians(camera.Zoom), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
+            glm::vec4 colors[] = {
+                    glm::vec4(1.0f, 0.5f, 0.31f, 1.0f),
+                    glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+            };
 
             MTL::RenderCommandEncoder* renderCommandEncoder = cmd->renderCommandEncoder(renderPassDescriptor);
             {
-                renderCommandEncoder->setRenderPipelineState(trianglePipeline);
                 renderCommandEncoder->setDepthStencilState(depthState);
+                renderCommandEncoder->setRenderPipelineState(objectPipeline);
                 renderCommandEncoder->setVertexBuffer(buffer, 0, 0);
-                renderCommandEncoder->setVertexBuffer(uniform_buffer, 0, 1);
-                renderCommandEncoder->setFragmentTexture(texture, 0);
-                renderCommandEncoder->setFragmentTexture(texture2, 1);
-                for (unsigned int i = 0; i < 10; i++) {
-                    glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), cubePositions[i]);
-                    float angle = 20.0f * i;
-                    modelMatrix = glm::rotate(modelMatrix, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
 
-                    glm::mat4 matrices[3] = { modelMatrix, viewMatrix, projectionMatrix };
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->setFragmentBytes(colors, sizeof(colors), 0);
 
-                    renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
-                    renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
-                }
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
 
+                matrices[0] = glm::translate(matrices[0], lightPos);
+                matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
+                renderCommandEncoder->setRenderPipelineState(lightPipeline);
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
                 // renderCommandEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, 6, MTL::IndexTypeUInt16, indexBuffer, 0);
             }
             renderCommandEncoder->endEncoding();
@@ -263,8 +210,6 @@ int main()
     queue->release();
     device->release();
     nswindow->release();
-    texture->release();
-    indexBuffer->release();
     buffer->release();
 
     glfwTerminate();
