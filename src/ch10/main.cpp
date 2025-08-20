@@ -1,0 +1,312 @@
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <Metal/Metal.hpp>
+#include <QuartzCore/QuartzCore.hpp>
+#include <AppKit/AppKit.hpp>
+#include <glm.hpp>
+#include <gtc/matrix_transform.hpp>
+#include <gtc/type_ptr.hpp>
+#include <stb_image.h>
+
+#include "glfw_adapter.h"
+#include "utils/shader.h"
+#include "utils/camera.h"
+
+#include <string>
+#include <iostream>
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processInput(GLFWwindow *window);
+
+struct Vertex {
+    glm::vec3 pos;
+    glm::vec3 color;
+    glm::vec2 texCoord;
+};
+
+struct Light {
+    alignas(16) glm::vec3 position;
+    alignas(16) glm::vec3 ambient;
+    alignas(16) glm::vec3 diffuse;
+    alignas(16) glm::vec3 specular;
+};
+
+struct Material {
+    alignas(16) glm::vec3 ambient;
+    alignas(16) glm::vec3 diffuse;
+    alignas(16) glm::vec3 specular;
+    alignas(16) float shininess;
+};
+
+int screenWidth = 800;
+int screenHeight = 600;
+
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+float lastX = screenWidth;
+float lastY = screenHeight;
+bool firstMouse = true;
+
+// timing
+float deltaTime = 0.0f;	// time between current frame and last frame
+float lastFrame = 0.0f;
+
+
+MTL::Texture* depthTexture;
+
+int main()
+{
+    MTL::Device* device = MTL::CreateSystemDefaultDevice();
+    MTL::CommandQueue* queue = device->newCommandQueue();
+    CA::MetalLayer* swapChain = CA::MetalLayer::layer();
+    swapChain->setDevice(device);
+    swapChain->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm);
+    stbi_set_flip_vertically_on_load(true);
+
+    glfwInit();
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Hello osx!", nullptr, nullptr);
+    NS::Window* nswindow = get_ns_window(window, swapChain);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+
+    MTL::ClearColor clearColor{0.0f, 0.0f, 0.0f, 0.0f};
+
+    Shader objectShader("shaders/shader.metal", "vertex_main", "object_fragment");
+    Shader lightShader("shaders/shader.metal", "vertex_main", "light_fragment");
+    objectShader.Compile(device);
+    lightShader.Compile(device);
+    MTL::VertexDescriptor* vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+
+    vertexDescriptor->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
+    vertexDescriptor->attributes()->object(0)->setOffset(0);
+    vertexDescriptor->attributes()->object(0)->setBufferIndex(0);
+
+    vertexDescriptor->attributes()->object(1)->setFormat(MTL::VertexFormatFloat3);
+    vertexDescriptor->attributes()->object(1)->setOffset(3 * sizeof(float));
+    vertexDescriptor->attributes()->object(1)->setBufferIndex(0);
+
+    vertexDescriptor->layouts()->object(0)->setStride(6 * sizeof(float));
+    vertexDescriptor->layouts()->object(0)->setStepFunction(MTL::VertexStepFunctionPerVertex);
+
+    MTL::RenderPipelineState* objectPipeline = objectShader.createPipeline(device, vertexDescriptor);
+    MTL::RenderPipelineState* lightPipeline = lightShader.createPipeline(device, vertexDescriptor);
+
+    float vertices[] = {
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+            0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+            0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+            0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+            0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+            -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+            -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+            -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+            -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+
+            0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+            0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+            0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+            0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+            0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+            0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+            0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+            0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+            0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+            0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+            0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f
+    };
+
+    MTL::Buffer* buffer = device->newBuffer(vertices, sizeof(vertices), MTL::ResourceStorageModeShared);
+
+    MTL::TextureDescriptor* depthDesc = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatDepth32Float,
+            screenWidth * 2,
+            screenHeight * 2,
+            false
+    );
+    depthDesc->setUsage(MTL::TextureUsageRenderTarget);
+    depthDesc->setStorageMode(MTL::StorageModePrivate);
+
+    depthTexture = device->newTexture(depthDesc);
+
+    /*
+        lightingShader.setVec3("material.ambient",  1.0f, 0.5f, 0.31f);
+        lightingShader.setVec3("material.diffuse",  1.0f, 0.5f, 0.31f);
+        lightingShader.setVec3("material.specular", 0.5f, 0.5f, 0.5f);
+        lightingShader.setFloat("material.shininess", 32.0f);
+     */
+    Material material{
+        glm::vec3(1.0f, 0.5f, 0.31f),
+        glm::vec3(1.0f, 0.5f, 0.31f),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        32.0f
+    };
+
+    Light light{glm::vec3(1.2f, 1.0f, 2.0f),
+                glm::vec3(0.1f),
+                glm::vec3(0.5f),
+                glm::vec3(1.0f)};
+
+
+    while (!glfwWindowShouldClose(window)) {
+        float currentFrame = static_cast<float>(glfwGetTime());
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+
+        processInput(window);
+
+        glfwPollEvents();
+
+        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        {
+            glm::vec3 lightColor;
+            lightColor.x = sin(glfwGetTime() * 2.0f);
+            lightColor.y = sin(glfwGetTime() * 0.7f);
+            lightColor.z = sin(glfwGetTime() * 1.3f);
+
+            glm::vec3 diffuseColor = lightColor   * glm::vec3(0.5f); // 降低影响
+            glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f); // 很低的影响
+
+            light.ambient = ambientColor;
+            light.diffuse = diffuseColor;
+
+            CA::MetalDrawable* surface = swapChain->nextDrawable();
+            MTL::CommandBuffer* cmd = queue->commandBuffer();
+            MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+            MTL::RenderPassColorAttachmentDescriptor* colorAttachment = renderPassDescriptor->colorAttachments()->object(0);
+            colorAttachment->setTexture(surface->texture());
+            colorAttachment->setLoadAction(MTL::LoadActionClear);
+            colorAttachment->setStoreAction(MTL::StoreActionStore);
+            colorAttachment->setClearColor(clearColor);
+
+            MTL::RenderPassDepthAttachmentDescriptor* depthAttachment = renderPassDescriptor->depthAttachment();
+            depthAttachment->setTexture(depthTexture);
+            depthAttachment->setLoadAction(MTL::LoadActionClear);
+            depthAttachment->setStoreAction(MTL::StoreActionDontCare);
+            depthAttachment->setClearDepth(1.0);
+            MTL::DepthStencilDescriptor* depthStateDesc = MTL::DepthStencilDescriptor::alloc()->init();
+            depthStateDesc->setDepthCompareFunction(MTL::CompareFunctionLess);
+            depthStateDesc->setDepthWriteEnabled(true);
+            MTL::DepthStencilState* depthState = device->newDepthStencilState(depthStateDesc);
+            renderPassDescriptor->setDepthAttachment(depthAttachment);
+            glm::mat4 modelMatrix = glm::mat4(1.0f);
+            glm::mat4 matrices[] = {
+                    modelMatrix,
+                    camera.GetViewMatrix(),
+                    glm::perspective(glm::radians(camera.Zoom), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f),
+                    glm::transpose(glm::inverse(modelMatrix)) // Normal matrix
+            };
+
+
+            MTL::RenderCommandEncoder* renderCommandEncoder = cmd->renderCommandEncoder(renderPassDescriptor);
+            {
+                renderCommandEncoder->setDepthStencilState(depthState);
+                renderCommandEncoder->setRenderPipelineState(objectPipeline);
+                renderCommandEncoder->setVertexBuffer(buffer, 0, 0);
+
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+
+                renderCommandEncoder->setFragmentBytes(&light, sizeof(light), 0);
+                renderCommandEncoder->setFragmentBytes(&material, sizeof(material), 1);
+                renderCommandEncoder->setFragmentBytes(&camera.Position, sizeof(camera.Position), 2);
+
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
+
+                matrices[0] = glm::translate(matrices[0], light.position);
+                matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
+                renderCommandEncoder->setRenderPipelineState(lightPipeline);
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
+                // renderCommandEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, 6, MTL::IndexTypeUInt16, indexBuffer, 0);
+            }
+            renderCommandEncoder->endEncoding();
+
+            cmd->presentDrawable(surface);
+            cmd->commit();
+            cmd->waitUntilCompleted();
+        }
+        pool->release();
+    }
+
+    queue->release();
+    device->release();
+    nswindow->release();
+    buffer->release();
+
+    glfwTerminate();
+    return 0;
+}
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    screenWidth = width;
+    screenHeight = height;
+}
+
+void processInput(GLFWwindow *window) {
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, deltaTime);
+}
+
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
+    // 如果没按下鼠标左键，直接返回，不处理视角
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS) {
+        firstMouse = true; // 松开后下次点击时重新校正起始位置
+        return;
+    }
+
+    float xpos = static_cast<float>(xposIn);
+    float ypos = static_cast<float>(yposIn);
+
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = (xpos - lastX) * 2;
+    float yoffset = (lastY - ypos) * 2; // reversed since y-coordinates go from bottom to top
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+// glfw: whenever the mouse scroll wheel scrolls, this callback is called
+// ----------------------------------------------------------------------
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
