@@ -62,6 +62,7 @@ int main()
     swapchain->setDevice(device);
     swapchain->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm);
 
+
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
