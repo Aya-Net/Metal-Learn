@@ -25,13 +25,13 @@ struct Material {
 struct VertexIn {
     float3 position [[attribute(0)]];
     float3 norm [[attribute(1)]];
+    float3 texCoord [[attribute(2)]];
 };
 
 struct VertexOut {
     float4 position [[position]];
     float3 fragPos;
     float3 norm;
-
 };
 
 vertex VertexOut vertex_main(

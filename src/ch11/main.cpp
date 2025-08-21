@@ -27,11 +27,34 @@ struct Vertex {
     glm::vec2 texCoord;
 };
 
-struct Light {
+struct DirLight {
+    alignas(16) glm::vec3 direction;
+    alignas(16) glm::vec3 ambient;
+    alignas(16) glm::vec3 diffuse;
+    alignas(16) glm::vec3 specular;
+};
+
+struct PosLight {
     alignas(16) glm::vec3 position;
     alignas(16) glm::vec3 ambient;
     alignas(16) glm::vec3 diffuse;
     alignas(16) glm::vec3 specular;
+    alignas(16) float constant;
+    float linear;
+    float quadratic;
+};
+
+struct SpotLight {
+    alignas(16) glm::vec3 position;
+    alignas(16) glm::vec3 direction;
+    alignas(16) glm::vec3 ambient;
+    alignas(16) glm::vec3 diffuse;
+    alignas(16) glm::vec3 specular;
+    alignas(16) float cutOff;
+    float outerCutOff;
+    float constant;
+    float linear;
+    float quadratic;
 };
 
 int screenWidth = 800;
@@ -68,12 +91,16 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    MTL::ClearColor clearColor{0.0f, 0.0f, 0.0f, 0.0f};
+    MTL::ClearColor clearColor{0.1f, 0.1f, 0.1f, 1.0f};
 
     Shader objectShader("shaders/shader.metal", "vertex_main", "object_fragment");
     Shader lightShader("shaders/shader.metal", "vertex_main", "light_fragment");
+    Shader posLightShader("shaders/shader.metal", "vertex_main", "object_fragment_pos");
+    Shader spotLightShader("shaders/shader.metal", "vertex_main", "object_fragment_spot");
     objectShader.Compile(device);
     lightShader.Compile(device);
+    posLightShader.Compile(device);
+    spotLightShader.Compile(device);
 
     MTL::VertexDescriptor* vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
 
@@ -94,6 +121,8 @@ int main()
 
     MTL::RenderPipelineState* objectPipeline = objectShader.createPipeline(device, vertexDescriptor);
     MTL::RenderPipelineState* lightPipeline = lightShader.createPipeline(device, vertexDescriptor);
+    MTL::RenderPipelineState* posLightPipeline = posLightShader.createPipeline(device, vertexDescriptor);
+    MTL::RenderPipelineState* spotLightPipeline = spotLightShader.createPipeline(device, vertexDescriptor);
 
     float vertices[] = {
             // positions          // normals           // texture coords
@@ -177,17 +206,37 @@ int main()
      */
 
 
-    Light light{glm::vec3(1.2f, 1.0f, 2.0f),
-                glm::vec3(0.1f),
+    DirLight light{glm::vec3(-0.2f, -1.0f, -0.3f),
+                glm::vec3(0.2f),
                 glm::vec3(0.5f),
                 glm::vec3(1.0f)};
 
+    PosLight posLight{glm::vec3(1.2f, 1.0f, 2.0f),
+                   glm::vec3(0.2f),
+                   glm::vec3(0.5f),
+                   glm::vec3(1.0f),
+                   1.0f,
+                   0.09f,
+                   0.032f};
+
+    SpotLight spotLight{camera.Position,
+                        camera.Front,
+                        glm::vec3(0.2f),
+                        glm::vec3(0.5f),
+                        glm::vec3(1.0f),
+                        glm::cos(glm::radians(12.5f)),
+                        glm::cos(glm::radians(17.5f)),
+                        1.0f,
+                        0.09f,
+                        0.032f};
 
 
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+        spotLight.position = camera.Position;
+        spotLight.direction = camera.Front;
 
 
         processInput(window);
@@ -228,7 +277,8 @@ int main()
             MTL::RenderCommandEncoder* renderCommandEncoder = cmd->renderCommandEncoder(renderPassDescriptor);
             {
                 renderCommandEncoder->setDepthStencilState(depthState);
-                renderCommandEncoder->setRenderPipelineState(objectPipeline);
+                //renderCommandEncoder->setRenderPipelineState(posLightPipeline);
+                renderCommandEncoder->setRenderPipelineState(spotLightPipeline);
                 renderCommandEncoder->setVertexBuffer(buffer, 0, 0);
 
                 renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
@@ -236,7 +286,9 @@ int main()
                 renderCommandEncoder->setFragmentTexture(material.diffuseTexture, 0);
                 renderCommandEncoder->setFragmentTexture(material.specularTexture, 1);
                 renderCommandEncoder->setFragmentBytes(&material.shininess, sizeof(float), 0);
-                renderCommandEncoder->setFragmentBytes(&light, sizeof(light), 1);
+//                renderCommandEncoder->setFragmentBytes(&light, sizeof(light), 1);
+//                renderCommandEncoder->setFragmentBytes(&posLight, sizeof(posLight), 1);
+                renderCommandEncoder->setFragmentBytes(&spotLight, sizeof(spotLight), 1);
                 renderCommandEncoder->setFragmentBytes(&camera.Position, sizeof(camera.Position), 2);
 
 //                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
@@ -250,11 +302,11 @@ int main()
                     renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
                 }
 
-                matrices[0] = glm::translate(glm::mat4(1.0f), light.position);
-                matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
-                renderCommandEncoder->setRenderPipelineState(lightPipeline);
-                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
-                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
+//                matrices[0] = glm::translate(glm::mat4(1.0f), spotLight.position);
+//                matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
+//                renderCommandEncoder->setRenderPipelineState(lightPipeline);
+//                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+//                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
                 // renderCommandEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, 6, MTL::IndexTypeUInt16, indexBuffer, 0);
             }
             renderCommandEncoder->endEncoding();
@@ -270,8 +322,11 @@ int main()
     device->release();
     nswindow->release();
     buffer->release();
+
     objectPipeline->release();
     lightPipeline->release();
+    posLightPipeline->release();
+    spotLightPipeline->release();
 
     glfwTerminate();
     return 0;
@@ -283,6 +338,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 void processInput(GLFWwindow *window) {
+    deltaTime *= 2;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
