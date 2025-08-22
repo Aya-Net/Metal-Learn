@@ -1,4 +1,4 @@
-set(APP_NAME ch7)
+set(APP_NAME ch12)
 add_executable(${APP_NAME} main.cpp utils/mtlppimpl.cpp ../misc/glfw_adapter.mm
         utils/shader.cpp
         utils/camera.h)

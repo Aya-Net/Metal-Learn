@@ -182,6 +182,13 @@ int main()
             glm::vec3(-1.3f,  1.0f, -1.5f)
     };
 
+    glm::vec3 pointLightPositions[] = {
+            glm::vec3( 0.7f,  0.2f,  2.0f),
+            glm::vec3( 2.3f, -3.3f, -4.0f),
+            glm::vec3(-4.0f,  2.0f, -12.0f),
+            glm::vec3( 0.0f,  0.0f, -3.0f)
+    };
+
     MTL::Buffer* buffer = device->newBuffer(vertices, sizeof(vertices), MTL::ResourceStorageModeShared);
 
     MTL::TextureDescriptor* depthDesc = MTL::TextureDescriptor::texture2DDescriptor(
@@ -197,35 +204,36 @@ int main()
 
     Material material(device, "../../assets/container2.png", "../../assets/container2_specular.png", 32);
 
+    DirLight dirLight{glm::vec3(-0.2f, -1.0f, -0.3f),
+                glm::vec3(0.05f),
+                glm::vec3(0.4f),
+                glm::vec3(0.5f)};
 
-    /*
-        lightingShader.setVec3("material.ambient",  1.0f, 0.5f, 0.31f);
-        lightingShader.setVec3("material.diffuse",  1.0f, 0.5f, 0.31f);
-        lightingShader.setVec3("material.specular", 0.5f, 0.5f, 0.5f);
-        lightingShader.setFloat("material.shininess", 32.0f);
-     */
+//    PosLight posLight{glm::vec3(1.2f, 1.0f, 2.0f),
+//                   glm::vec3(0.2f),
+//                   glm::vec3(0.5f),
+//                   glm::vec3(1.0f),
+//                   1.0f,
+//                   0.09f,
+//                   0.032f};
 
+    PosLight posLight[4] = {
+        {pointLightPositions[0], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
+        {pointLightPositions[1], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
+        {pointLightPositions[2], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
+        {pointLightPositions[3], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f}
+    };
 
-    DirLight light{glm::vec3(-0.2f, -1.0f, -0.3f),
-                glm::vec3(0.2f),
-                glm::vec3(0.5f),
-                glm::vec3(1.0f)};
-
-    PosLight posLight{glm::vec3(1.2f, 1.0f, 2.0f),
-                   glm::vec3(0.2f),
-                   glm::vec3(0.5f),
-                   glm::vec3(1.0f),
-                   1.0f,
-                   0.09f,
-                   0.032f};
+    MTL::Buffer *posLightBuffer = device->newBuffer(&posLight, sizeof(posLight), MTL::ResourceStorageModeShared);
+    const int posLightCount = 4;
 
     SpotLight spotLight{camera.Position,
                         camera.Front,
-                        glm::vec3(0.2f),
-                        glm::vec3(0.5f),
+                        glm::vec3(0.0f),
+                        glm::vec3(1.0f),
                         glm::vec3(1.0f),
                         glm::cos(glm::radians(12.5f)),
-                        glm::cos(glm::radians(17.5f)),
+                        glm::cos(glm::radians(15.0f)),
                         1.0f,
                         0.09f,
                         0.032f};
@@ -278,7 +286,7 @@ int main()
             {
                 renderCommandEncoder->setDepthStencilState(depthState);
 //                renderCommandEncoder->setRenderPipelineState(posLightPipeline);
-                renderCommandEncoder->setRenderPipelineState(spotLightPipeline);
+
                 renderCommandEncoder->setVertexBuffer(buffer, 0, 0);
 
                 renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
@@ -286,28 +294,38 @@ int main()
                 renderCommandEncoder->setFragmentTexture(material.diffuseTexture, 0);
                 renderCommandEncoder->setFragmentTexture(material.specularTexture, 1);
                 renderCommandEncoder->setFragmentBytes(&material.shininess, sizeof(float), 0);
-//                renderCommandEncoder->setFragmentBytes(&light, sizeof(light), 1);
-//                renderCommandEncoder->setFragmentBytes(&posLight, sizeof(posLight), 1);
-                renderCommandEncoder->setFragmentBytes(&spotLight, sizeof(spotLight), 1);
-                renderCommandEncoder->setFragmentBytes(&camera.Position, sizeof(camera.Position), 2);
+                renderCommandEncoder->setFragmentBytes(&camera.Position, sizeof(camera.Position), 1);
+                renderCommandEncoder->setFragmentBytes(&dirLight, sizeof(dirLight), 2);
+                renderCommandEncoder->setFragmentBytes(&posLight, sizeof(posLight), 3);
+                renderCommandEncoder->setFragmentBytes(&posLightCount, sizeof(posLightCount), 4);
+                renderCommandEncoder->setFragmentBytes(&spotLight, sizeof(spotLight), 5);
 
 //                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
-                for (int i = 0; i < 10; ++i) {
-                    modelMatrix = glm::translate(glm::mat4(1.0f), cubePositions[i]);
-                    float angle = 20.0f * i;
-                    modelMatrix = glm::rotate(modelMatrix, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-                    matrices[0] = modelMatrix;
-                    matrices[3] = glm::transpose(glm::inverse(modelMatrix)); // Normal matrix
-                    renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
-                    renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
+                renderCommandEncoder->setRenderPipelineState(objectPipeline); // draw cubes
+                {
+                    for (int i = 0; i < 10; ++i) {
+                        modelMatrix = glm::translate(glm::mat4(1.0f), cubePositions[i]);
+                        float angle = 20.0f * i;
+                        modelMatrix = glm::rotate(modelMatrix, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+                        matrices[0] = modelMatrix;
+                        matrices[3] = glm::transpose(glm::inverse(modelMatrix)); // Normal matrix
+                        renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                        renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0),
+                                                             NS::UInteger(36));
+                    }
+                }
+                renderCommandEncoder->setRenderPipelineState(lightPipeline); // draw light cubes
+                {
+                    for (int i = 0; i < posLightCount; ++i) {
+                        matrices[0] = glm::translate(glm::mat4(1.0f), pointLightPositions[i]);
+                        matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
+                        renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                        renderCommandEncoder->setFragmentBytes(&i, sizeof(i), 4);
+                        renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
+                    }
                 }
 
-//                matrices[0] = glm::translate(glm::mat4(1.0f), spotLight.position);
-//                matrices[0] = glm::scale(matrices[0], glm::vec3(0.2f));
-//                renderCommandEncoder->setRenderPipelineState(lightPipeline);
-//                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
-//                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(36));
-                // renderCommandEncoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, 6, MTL::IndexTypeUInt16, indexBuffer, 0);
+
             }
             renderCommandEncoder->endEncoding();
 
@@ -322,6 +340,7 @@ int main()
     device->release();
     nswindow->release();
     buffer->release();
+    posLightBuffer->release();
 
     objectPipeline->release();
     lightPipeline->release();
