@@ -22,7 +22,7 @@ class TexturePool {
     std::map<std::string, unsigned int> texture_map_; // Map to store loaded textures with their file paths as keys
 
   public:
-    unsigned int loadTexture(const std::string &imagePath, MTL::Device* device, bool needFlip = true) {
+    unsigned int loadTexture(const std::string &imagePath, MTL::Device* device, bool needFlip = false) {
         std::string normalizedPath = imagePath;
         std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/'); // Normalize path for consistency
         stbi_set_flip_vertically_on_load(needFlip);

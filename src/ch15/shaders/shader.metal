@@ -42,8 +42,8 @@ struct SpotLight {
 
 struct VertexIn {
     float3 position [[attribute(0)]];
-    float3 norm [[attribute(1)]];
-    float2 texCoords [[attribute(2)]];
+    // float3 norm [[attribute(1)]];
+    float2 texCoords [[attribute(1)]];
 };
 
 struct VertexOut {
@@ -54,22 +54,7 @@ struct VertexOut {
 
 };
 
-vertex VertexOut vertex_main(
-        VertexIn in [[stage_in]],
-        constant Uniforms& uniforms [[buffer(1)]]
-) {
-    VertexOut out;
-    out.position = uniforms.projectionMatrix * uniforms.viewMatrix * uniforms.modelMatrix * float4(in.position, 1.0);
-    out.fragPos = float3(uniforms.modelMatrix * float4(in.position, 1.0));
-    float3x3 normalMatrix = float3x3(
-        uniforms.normMatrix[0].xyz,
-        uniforms.normMatrix[1].xyz,
-        uniforms.normMatrix[2].xyz
-    );
-    out.norm = normalMatrix * in.norm;
-    out.texCoords = in.texCoords;
-    return out;
-}
+
 
 float3 CalcDirLight(
     thread float2 &texCoords, 
@@ -157,36 +142,42 @@ float3 CalcSpotLight(
     return (ambient + diffuse + specular);
 }
 
-fragment float4 object_fragment(
+vertex VertexOut vertex_main(
+        VertexIn in [[stage_in]],
+        constant Uniforms& uniforms [[buffer(1)]]
+) {
+    VertexOut out;
+    out.position = uniforms.projectionMatrix * uniforms.viewMatrix * uniforms.modelMatrix * float4(in.position, 1.0);
+    out.fragPos = float3(uniforms.modelMatrix * float4(in.position, 1.0));
+    // float3x3 normalMatrix = float3x3(
+    //     uniforms.normMatrix[0].xyz,
+    //     uniforms.normMatrix[1].xyz,
+    //     uniforms.normMatrix[2].xyz
+    // );
+    // out.norm = normalMatrix * in.norm;
+    out.texCoords = in.texCoords;
+    return out;
+}
+
+fragment float4 fragment_main(
         VertexOut in [[stage_in]],
-        texture2d<float> materialDiffuse [[texture(0)]],
-        texture2d<float> materialSpecular [[texture(1)]],
-        constant float& materialShininess [[buffer(0)]],
-        constant float3& viewPos [[buffer(1)]],
-        constant DirLight &dirLight [[buffer(2)]],
-        constant PosLight *posLight [[buffer(3)]],
-        constant int &posLightCount [[buffer(4)]],
-        constant SpotLight &spotLight [[buffer(5)]],
+        texture2d<float> tex [[texture(0)]],
+
         sampler s [[sampler(0)]]
 ) {
-    float3 norm = normalize(in.norm);
-    float3 viewDir = normalize(viewPos - in.fragPos);
-    float3 result;
-    result = CalcDirLight(in.texCoords, dirLight, norm, viewDir, materialDiffuse, materialSpecular, materialShininess, s);
-    for (int i = 0; i < posLightCount; i++) {
-        result += CalcPosLight(in.texCoords, in.fragPos, posLight[i], norm, viewDir, materialDiffuse, materialSpecular, materialShininess, s);
-    }
     // result += CalcSpotLight(in.texCoords, in.fragPos, spotLight, norm, viewDir, materialDiffuse, materialSpecular, materialShininess, s);
-    return float4(result, 1.0);
+    // float near = 0.1; 
+    // float far  = 100.0;
+    // float z = in.position.z * 2.0 - 1.0;
+    // float linearZ = (2.0 * near * far) / (far + near - z * (far - near));    
+    // return float4(float3(linearZ / 10), 1);
+    return tex.sample(s, in.texCoords);
 }
 
 
 
-fragment float4 light_fragment(
-        VertexOut in [[stage_in]],
-        constant PosLight *posLight [[buffer(3)]],
-        constant int &index [[buffer(4)]]
-
+fragment float4 fragment_frame(
+        VertexOut in [[stage_in]]
 ) {
     return float4(posLight[index].specular, 1.0);
 }

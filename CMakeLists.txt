@@ -53,3 +53,15 @@ add_copy_assets(ch12 ${CMAKE_SOURCE_DIR}/src/ch12)
 
 add_subdirectory(src/ch13)
 add_copy_assets(ch13 ${CMAKE_SOURCE_DIR}/src/ch13)
+
+add_subdirectory(src/ch14)
+add_copy_assets(ch14 ${CMAKE_SOURCE_DIR}/src/ch14)
+
+add_subdirectory(src/ch15)
+add_copy_assets(ch15 ${CMAKE_SOURCE_DIR}/src/ch15)
+
+add_subdirectory(src/ch16)
+add_copy_assets(ch16 ${CMAKE_SOURCE_DIR}/src/ch16)
+
+add_subdirectory(src/ch17)
+add_copy_assets(ch17 ${CMAKE_SOURCE_DIR}/src/ch17)

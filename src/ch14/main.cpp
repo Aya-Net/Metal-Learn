@@ -55,7 +55,7 @@ struct SpotLight {
 int screenWidth = 800;
 int screenHeight = 600;
 
-Camera camera(glm::vec3(0.0f, 9.0f, 30.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 float lastX = screenWidth;
 float lastY = screenHeight;
 bool firstMouse = true;
@@ -86,21 +86,91 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    MTL::ClearColor clearColor{0.0f, 0.0f, 0.0f, 1.0f};
+    MTL::ClearColor clearColor{0.05f, 0.05f, 0.05f, 1.0f};
 
-    Shader objectShader("shaders/shader.metal", "vertex_main", "object_fragment");
-    objectShader.Compile(device);
 
-    Model model("../../assets/backpack/backpack.obj", device);
 
-    MTL::RenderPipelineState* objectPipeline = objectShader.createPipeline(device, model.vertexDescriptor);
+    float cubeVertices[] = {
+            // positions          // texture Coords
+            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+            0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
 
-    glm::vec3 pointLightPositions[] = {
-            glm::vec3( 0.7f,  0.2f,  2.0f),
-            glm::vec3( 2.3f, -3.3f, -4.0f),
-            glm::vec3(-4.0f,  2.0f, -12.0f),
-            glm::vec3( 0.0f,  0.0f, -3.0f)
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+            -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+            -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
     };
+    float planeVertices[] = {
+            // positions          // texture Coords (note we set these higher than 1 (together with GL_REPEAT as texture wrapping mode). this will cause the floor texture to repeat)
+            5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
+            -5.0f, -0.5f,  5.0f,  0.0f, 0.0f,
+            -5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
+
+            5.0f, -0.5f,  5.0f,  2.0f, 0.0f,
+            -5.0f, -0.5f, -5.0f,  0.0f, 2.0f,
+            5.0f, -0.5f, -5.0f,  2.0f, 2.0f
+    };
+
+    MTL::Buffer *cubeBuffer = device->newBuffer(cubeVertices, sizeof(cubeVertices), MTL::ResourceStorageModeShared);
+    MTL::Buffer *planeBuffer = device->newBuffer(planeVertices, sizeof(planeVertices), MTL::ResourceStorageModeShared);
+
+    TexturePool texturePool;
+
+    texturePool.loadTexture("../../assets/marble.jpg", device, true);
+    texturePool.loadTexture("../../assets/metal.png", device, true);
+
+    MTL::VertexDescriptor* vertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+
+    vertexDescriptor->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
+    vertexDescriptor->attributes()->object(0)->setOffset(0);
+    vertexDescriptor->attributes()->object(0)->setBufferIndex(0);
+
+    vertexDescriptor->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
+    vertexDescriptor->attributes()->object(1)->setOffset(3 * sizeof(float));
+    vertexDescriptor->attributes()->object(1)->setBufferIndex(0);
+
+    vertexDescriptor->layouts()->object(0)->setStride(5 * sizeof(float));
+    vertexDescriptor->layouts()->object(0)->setStepFunction(MTL::VertexStepFunctionPerVertex);
+
+    Shader shader("shaders/shader.metal", "vertex_main", "fragment_main");
+    shader.Compile(device);
+
+    MTL::RenderPipelineState* renderPipeline = shader.createPipeline(device, vertexDescriptor);
+    vertexDescriptor->release();
 
     MTL::TextureDescriptor* depthDesc = MTL::TextureDescriptor::texture2DDescriptor(
             MTL::PixelFormatDepth32Float,
@@ -113,40 +183,21 @@ int main()
     depthTexture = device->newTexture(depthDesc);
     depthDesc->release();
 
-    DirLight dirLight{glm::vec3(20.f, -10.f, -30.0f),
-                glm::vec3(0.2f),
-                glm::vec3(0.8f),
-                glm::vec3(1.0f)};
+    MTL::SamplerDescriptor *planeSamplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    planeSamplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    planeSamplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    planeSamplerDesc->setMipFilter(MTL::SamplerMipFilterLinear);
+    planeSamplerDesc->setSAddressMode(MTL::SamplerAddressModeRepeat);
+    planeSamplerDesc->setTAddressMode(MTL::SamplerAddressModeRepeat);
 
-    PosLight posLight[4] = {
-        {pointLightPositions[0], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
-        {pointLightPositions[1], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
-        {pointLightPositions[2], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f},
-        {pointLightPositions[3], glm::vec3(0.05f), glm::vec3(0.8f), glm::vec3(1.0f), 1.0f, 0.09f, 0.032f}
-    };
-
-    MTL::Buffer *posLightBuffer = device->newBuffer(&posLight, sizeof(posLight), MTL::ResourceStorageModeShared);
-    const int posLightCount = 2;
-
-    SpotLight spotLight{camera.Position,
-                        camera.Front,
-                        glm::vec3(0.0f),
-                        glm::vec3(1.0f),
-                        glm::vec3(1.0f),
-                        glm::cos(glm::radians(12.5f)),
-                        glm::cos(glm::radians(15.0f)),
-                        1.0f,
-                        0.09f,
-                        0.032f};
+    MTL::SamplerState *planeSamplerState = device->newSamplerState(planeSamplerDesc);
+    planeSamplerDesc->release();
 
 
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-        spotLight.position = camera.Position;
-        spotLight.direction = camera.Front;
-
 
         processInput(window);
 
@@ -185,16 +236,28 @@ int main()
 
             MTL::RenderCommandEncoder* renderCommandEncoder = cmd->renderCommandEncoder(renderPassDescriptor);
             {
+                renderCommandEncoder->setRenderPipelineState(renderPipeline);
                 renderCommandEncoder->setDepthStencilState(depthState);
-                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
-                renderCommandEncoder->setFragmentBytes(&shininess, sizeof(float), 0);
-                renderCommandEncoder->setFragmentBytes(&camera.Position, sizeof(camera.Position), 1);
-                renderCommandEncoder->setFragmentBytes(&dirLight, sizeof(dirLight), 2);
-                renderCommandEncoder->setFragmentBytes(&posLight, sizeof(posLight), 3);
-                renderCommandEncoder->setFragmentBytes(&posLightCount, sizeof(posLightCount), 4);
-                renderCommandEncoder->setFragmentBytes(&spotLight, sizeof(spotLight), 5);
+                renderCommandEncoder->setFragmentSamplerState(planeSamplerState, 0);
 
-                model.Draw(renderCommandEncoder, objectPipeline);
+                renderCommandEncoder->setVertexBuffer(cubeBuffer, 0, 0);
+                renderCommandEncoder->setFragmentTexture(texturePool.getTexture(0), 0);
+
+                matrices[0] = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, -1.0f));
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), 36);
+
+                matrices[0] = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f));
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), 36);
+
+                renderCommandEncoder->setVertexBuffer(planeBuffer, 0, 0);
+                renderCommandEncoder->setFragmentTexture(texturePool.getTexture(1), 0);
+                matrices[0] = glm::mat4(1.0f);
+                renderCommandEncoder->setVertexBytes(matrices, sizeof(matrices), 1);
+                renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), 6);
+
+//                model.Draw(renderCommandEncoder, objectPipeline);
             }
             renderCommandEncoder->endEncoding();
 
@@ -213,13 +276,16 @@ int main()
         //pool->release();
     }
 
+    depthTexture->release();
+    planeSamplerState->release();
+
+    renderPipeline->release();
+    planeBuffer->release();
+    cubeBuffer->release();
+
     queue->release();
     device->release();
     nswindow->release();
-    posLightBuffer->release();
-
-    objectPipeline->release();
-
 
     glfwTerminate();
     return 0;
@@ -231,7 +297,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 void processInput(GLFWwindow *window) {
-    deltaTime *= 2;
+    deltaTime /= 2;
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
